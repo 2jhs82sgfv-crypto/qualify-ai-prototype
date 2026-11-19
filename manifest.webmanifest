@@ -1,0 +1,10 @@
+{
+  "name": "QUALIFY AI",
+  "short_name": "QUALIFY AI",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f3f6fa",
+  "theme_color": "#13243a",
+  "lang": "ja",
+  "icons": []
+}
