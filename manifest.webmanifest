@@ -1,10 +1,25 @@
 {
-  "name": "QUALIFY AI",
+  "name": "QUALIFY AI - 資格試験トレーニング",
   "short_name": "QUALIFY AI",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f3f6fa",
   "theme_color": "#13243a",
   "lang": "ja",
-  "icons": []
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "orientation": "portrait",
+  "scope": "./"
 }
