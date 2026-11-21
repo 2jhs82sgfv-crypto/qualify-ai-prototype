@@ -1,6 +1,6 @@
 name: Extract app ZIP
 
-on:
+'on':
   push:
     paths:
       - 'qualify_ai_v03_ai_import.zip'
