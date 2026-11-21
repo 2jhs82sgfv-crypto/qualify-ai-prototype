@@ -19,7 +19,7 @@ const seed={
  history:[]
 };
 let db=load();
-function load(){try{const x=JSON.parse(localStorage.getItem(KEY))||structuredClone(seed);x.pendingReview=x.pendingReview||[];return x}catch(e){const x=structuredClone(seed);x.pendingReview=[];return x}}
+function load(){try{const x=JSON.parse(localStorage.getItem(KEY))||structuredClone(seed);x.pendingReview=x.pendingReview||[];x.referenceQuestions=x.referenceQuestions||[];return x}catch(e){const x=structuredClone(seed);x.pendingReview=[];x.referenceQuestions=[];return x}}
 function save(){localStorage.setItem(KEY,JSON.stringify(db))}
 let page="home", selectedQual="mpd2", current=[],pos=0,answers=[],showResult=false;
 const app=document.getElementById("app");
@@ -61,28 +61,70 @@ function dataPage(){
  app.innerHTML=`<div class="card"><h2>データ入出力</h2><p>問題集・資格設定・学習履歴をJSONファイルとしてバックアップできます。JSONはバックアップと移行用です。AI資料取込は「AI資料取込」タブから行います。</p><button class="primary" onclick="exportData()">JSONを書き出す</button><label>JSONを読み込む</label><input id="importFile" type="file" accept=".json,application/json"><button class="secondary" onclick="importData()">読み込んで追加・更新</button></div><div class="notice"><b>データ保護：</b>読み込んだJSONは現在のデータに追加されます。大切なデータは、読み込み前にバックアップしてください。</div>`;
 }
 function aiImportPage(){
- const api=localStorage.getItem("qualify-ai-api-base")||"";
- app.innerHTML=`<div class="card"><span class="pill">AI資料解析</span><h2>資料から問題を取り込む</h2><p>PDF・JPEG・PNG・WebP・Word・Excel・CSV・テキスト資料に対応する設計です。資料をAIに解析させ、元資料から抽出した問題は確認後に登録します。予測問題は自動登録します。</p><label>対象資格</label><select id="aiQual">${db.qualifications.map(q=>`<option value="${q.id}" ${q.id===selectedQual?"selected":""}>${esc(q.name)}</option>`).join("")}</select><label>資料ファイル</label><input id="aiFiles" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.docx,.xlsx,.xls,.csv,.txt"><label>追加指示（任意）</label><textarea id="aiInstructions" placeholder="例：機械製図2級の学科試験に関係する問題を優先して抽出"></textarea><label>AIサーバーURL</label><input id="aiApiBase" type="url" value="${esc(api)}" placeholder="https://your-api.example.com"><p class="muted">APIサーバーを準備してURLを設定するまでは、AI解析は実行できません。APIキーはこの画面に入力しません。</p><button class="primary" onclick="runAiImport()">資料を解析する</button><div id="aiStatus" class="muted" style="margin-top:10px"></div></div>
- <div class="card"><div class="row"><h2>登録前の確認</h2><span class="pill">${db.pendingReview.length}問</span></div><p class="muted">元資料から抽出された問題です。内容を確認してから登録してください。</p>${db.pendingReview.length?db.pendingReview.map((q,i)=>`<div class="card"><div class="row"><span class="pill">${esc(q.subject||"分野未分類")}</span><button class="danger" onclick="removePending(${i})">破棄</button></div><label>問題文</label><textarea id="pendingText${i}">${esc(q.text)}</textarea><label>選択肢（1行に1つ）</label><textarea id="pendingChoices${i}">${esc((q.choices||[]).join("\n"))}</textarea><label>正解番号（0から開始）</label><input id="pendingAnswer${i}" type="number" min="0" value="${Number(q.answer)||0}"><label>解説</label><textarea id="pendingExplain${i}">${esc(q.explain||"")}</textarea><p class="muted">出典：${esc(q.source||"アップロード資料")} · 確信度：${esc(q.confidence||"未評価")}</p><button class="primary" onclick="approvePending(${i})">確認して登録</button></div>`).join(""):`<p class="muted">確認待ちの問題はありません。</p>`}</div>
- <div class="card"><h3>自動登録された予測問題</h3><p class="muted">AIが生成した予測問題は「AI予測問題」区分で自動登録されます。必要に応じて問題管理から編集・削除できます。</p><b>${db.questions.filter(q=>q.origin==="AI予測問題").length}問</b></div>`;
+ const refs=db.referenceQuestions||[];
+ app.innerHTML=`<div class="card"><span class="pill">ChatGPT連携</span><h2>参考問題を登録＋予想問題を生成</h2><p>参考問題のPDF・画像などを選び、ChatGPTへ渡します。ChatGPTが参考問題と予想問題をJSON形式で作成したら、この画面で取り込みます。APIキーやAIサーバーは不要です。</p><label>対象資格</label><select id="aiQual">${db.qualifications.map(q=>`<option value="${q.id}" ${q.id===selectedQual?"selected":""}>${esc(q.name)}</option>`).join("")}</select><label>参考問題の資料（PDF・写真・Wordなど）</label><input id="aiFiles" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.docx,.xlsx,.xls,.csv,.txt,.md"><label>追加指示（任意）</label><textarea id="aiInstructions" placeholder="例：機械製図2級向け。参考問題の出題傾向を分析し、少し難しめの予想問題を作る"></textarea><button class="primary" onclick="shareReferenceToChatGPT()">ChatGPTに資料を渡す</button><p class="muted">共有シートが開いたらChatGPTを選択してください。共有できない場合は、ChatGPTを開いて資料を添付し、コピーした指示を貼り付けます。</p></div>
+ <div class="card"><h2>ChatGPTの結果を取り込む</h2><p>ChatGPTに「指定形式のJSONファイルを作成して」と頼み、作成されたJSONファイルを選択してください。取り込むと参考問題は参考問題集へ、予想問題は問題演習へ自動登録されます。</p><label>ChatGPTが作成したJSON</label><input id="chatgptJson" type="file" accept=".json,application/json"><button class="primary" onclick="importChatGPTResult()">参考問題＋予想問題を登録</button><div id="chatImportStatus" class="muted" style="margin-top:10px"></div></div>
+ <div class="card"><div class="row"><h2>登録済み参考問題</h2><span class="pill">${refs.filter(q=>q.qual===selectedQual).length}問</span></div><p class="muted">参考問題は問題演習には混ぜず、予想問題を作るための資料として保存します。</p>${refs.filter(q=>q.qual===selectedQual).slice(-20).reverse().map((q,i)=>`<div class="card"><div class="row"><span class="pill">${esc(q.subject||"分野未分類")}</span><button class="danger" onclick="deleteReferenceQuestion('${q.id}')">削除</button></div><b>${esc(q.text)}</b><p class="muted">${esc(q.source||"参考問題")}</p></div>`).join("")||`<p class="muted">この資格の参考問題はまだ登録されていません。</p>`}</div>
+ <div class="card"><h3>生成済み予想問題</h3><p class="muted">予想問題は問題管理から編集・削除できます。</p><b>${db.questions.filter(q=>q.qual===selectedQual&&q.origin==="AI予測問題").length}問</b></div>`;
 }
-async function runAiImport(){
- const files=[...(document.getElementById("aiFiles")?.files||[])],base=document.getElementById("aiApiBase")?.value.trim().replace(/\/$/,""),qual=document.getElementById("aiQual")?.value,instructions=document.getElementById("aiInstructions")?.value.trim();
- const status=document.getElementById("aiStatus");
- if(!files.length){alert("資料ファイルを選択してください");return} if(!base){alert("AIサーバーURLを設定してください。サーバーの準備は次の工程で行います。");return}
- localStorage.setItem("qualify-ai-api-base",base);status.textContent="資料を送信してAI解析中です。ファイル数やページ数によって時間がかかります。";
- const fd=new FormData();files.forEach(f=>fd.append("files",f));fd.append("qualificationId",qual);fd.append("instructions",instructions);
- try{const res=await fetch(base+"/api/analyze",{method:"POST",body:fd});const data=await res.json();if(!res.ok)throw new Error(data.error||"AI解析に失敗しました");
-  const extracted=(data.extractedQuestions||[]).map((q,i)=>({...q,id:q.id||"review"+Date.now()+i,qual,origin:"資料抽出",source:q.source||files.map(f=>f.name).join(", ")}));db.pendingReview.push(...extracted);
-  const predictions=(data.predictions||[]).map((q,i)=>({...q,id:q.id||"pred"+Date.now()+i,qual,origin:"AI予測問題",source:q.source||"AI生成・予測問題",level:q.level||"予測",createdAt:new Date().toISOString()}));db.questions.push(...predictions);save();status.textContent=`解析完了：確認待ち${extracted.length}問、予測問題${predictions.length}問を処理しました。`;aiImportPage();
- }catch(e){status.textContent="解析できませんでした："+e.message+"（AIサーバーのURL・稼働状態を確認してください）"}
+function buildChatGPTPrompt(qual,instructions,files){
+ const qnameText=qname(qual);
+ const refs=(db.referenceQuestions||[]).filter(q=>q.qual===qual).slice(-80).map(q=>({subject:q.subject,kind:q.kind,text:q.text,choices:q.choices,answer:q.answer,explain:q.explain,source:q.source}));
+ return `あなたは資格試験の問題作成アシスタントです。添付した参考問題資料と、下記のアプリ内に登録済み参考問題を分析してください。\n対象資格：${qnameText}\n添付資料：${files.map(f=>f.name).join("、")||"なし"}\n追加指示：${instructions||"参考問題の出題傾向を分析し、重要事項を問う質の高い予想問題を作成する。"}\n\n必ず以下のJSONのみを出力してください。説明文やMarkdownコードフェンスは付けず、可能ならJSONファイルとして作成してください。資料から読み取った実際の参考問題を referenceQuestions に登録し、参考問題の傾向を踏まえた新規の予想問題を predictions に作成してください。参考問題を予想問題として重複させないでください。正解・解説は資料で確認できる内容を優先し、不明な場合は推測せず explain に「要確認」と記載してください。過去問と断定せず、出典情報を記録してください。\n\nJSON形式：\n{\"qualificationId\":\"${qual}\",\"referenceQuestions\":[{\"subject\":\"分野\",\"kind\":\"multi\",\"level\":\"参考\",\"text\":\"問題文\",\"choices\":[\"選択肢\"],\"answer\":0,\"explain\":\"根拠\",\"source\":\"資料名・ページ\"}],\"predictions\":[{\"subject\":\"分野\",\"kind\":\"multi\",\"level\":\"予測\",\"text\":\"新規問題文\",\"choices\":[\"選択肢\"],\"answer\":0,\"explain\":\"解説\",\"source\":\"参考問題からの予測\"}]}\n\nアプリ内参考問題（既存分）：\n${JSON.stringify(refs)}\n\nkind は ○×問題なら tf、選択式なら multi。answer は選択肢の番号を0から数えた整数です。各問題は4択を基本に、○×問題は choices [\"○\",\"×\"] としてください。`;
 }
+async function shareReferenceToChatGPT(){
+ const files=[...(document.getElementById("aiFiles")?.files||[])],qual=document.getElementById("aiQual")?.value||selectedQual,instructions=document.getElementById("aiInstructions")?.value.trim()||"";
+ if(!files.length && !(db.referenceQuestions||[]).some(q=>q.qual===qual)){alert("参考問題の資料を選ぶか、先に参考問題を登録してください。");return}
+ const prompt=buildChatGPTPrompt(qual,instructions,files);
+ try{
+  const canShareFiles=files.length && navigator.share && navigator.canShare && navigator.canShare({files});
+  if(navigator.share && (!files.length || canShareFiles)){
+   const payload={title:"QUALIFY AI 参考問題＋予想問題作成",text:prompt};
+   if(canShareFiles)payload.files=files;
+   await navigator.share(payload);
+   return;
+  }
+ }catch(e){if(e.name==="AbortError")return;}
+ try{await navigator.clipboard.writeText(prompt)}catch(e){}
+ window.open("https://chatgpt.com/","_blank","noopener");
+ alert("指示文をコピーしました。ChatGPTを開き、資料を添付して指示文を貼り付けてください。");
+}
+function importChatGPTResult(){
+ const file=document.getElementById("chatgptJson")?.files?.[0],status=document.getElementById("chatImportStatus");
+ if(!file){alert("ChatGPTが作成したJSONファイルを選択してください。");return}
+ const reader=new FileReader();reader.onload=()=>{try{
+  const data=JSON.parse(reader.result),qual=data.qualificationId||document.getElementById("aiQual")?.value||selectedQual;
+  const incomingRefs=data.referenceQuestions||data.references||[],incomingPreds=data.predictions||[];
+  if(!incomingRefs.length&&!incomingPreds.length)throw new Error("referenceQuestions または predictions が見つかりません");
+  if(!confirm(`参考問題 ${incomingRefs.length}問、予想問題 ${incomingPreds.length}問を登録しますか？`))return;
+  const stamp=Date.now();
+  incomingRefs.forEach((q,i)=>{if(!q.text||!Array.isArray(q.choices)||q.choices.length<2)return;db.referenceQuestions.push({...q,id:q.id||`ref${stamp}${i}`,qual,kind:q.kind||"multi",origin:"ChatGPT抽出・参考問題",source:q.source||file.name,createdAt:new Date().toISOString()})});
+  incomingPreds.forEach((q,i)=>{if(!q.text||!Array.isArray(q.choices)||q.choices.length<2)return;db.questions.push({...q,id:q.id||`pred${stamp}${i}`,qual,kind:q.kind||"multi",level:q.level||"予測",origin:"AI予測問題",source:q.source||"参考問題からChatGPTが生成",createdAt:new Date().toISOString()})});
+  save();status.textContent=`登録しました：参考問題 ${incomingRefs.length}問、予想問題 ${incomingPreds.length}問。`;
+  aiImportPage();
+ }catch(e){status.textContent="JSONを読み込めませんでした："+e.message;alert(status.textContent)}};reader.readAsText(file);
+}
+function deleteReferenceQuestion(id){if(confirm("この参考問題を削除しますか？")){db.referenceQuestions=db.referenceQuestions.filter(q=>q.id!==id);save();aiImportPage()}}
 function approvePending(i){const q=db.pendingReview[i];if(!q)return;const text=document.getElementById("pendingText"+i).value.trim(),choices=document.getElementById("pendingChoices"+i).value.split("\n").map(x=>x.trim()).filter(Boolean),answer=Number(document.getElementById("pendingAnswer"+i).value),explain=document.getElementById("pendingExplain"+i).value.trim();if(!text||choices.length<2||!Number.isInteger(answer)||answer<0||answer>=choices.length){alert("問題文・選択肢・正解番号を確認してください");return}db.questions.push({...q,id:"src"+Date.now(),text,choices,answer,explain,origin:"資料抽出・確認済み",level:q.level||"未設定"});db.pendingReview.splice(i,1);save();aiImportPage()}
 function removePending(i){if(confirm("この抽出問題を破棄しますか？")){db.pendingReview.splice(i,1);save();aiImportPage()}}
 function editQuestion(id){const q=db.questions.find(x=>x.id===id);if(!q)return;page="bank";render();document.getElementById("bQual").value=q.qual;document.getElementById("bSubject").value=q.subject||"";document.getElementById("bKind").value=q.kind||"multi";document.getElementById("bText").value=q.text;document.getElementById("bChoices").value=(q.choices||[]).join("\n");document.getElementById("bAnswer").value=q.answer;document.getElementById("bExplain").value=q.explain||"";document.getElementById("bSource").value=q.source||"";document.querySelector('#app .primary').textContent="変更を保存";document.querySelector('#app .primary').onclick=()=>{q.qual=document.getElementById("bQual").value;q.subject=document.getElementById("bSubject").value.trim();q.kind=document.getElementById("bKind").value;q.text=document.getElementById("bText").value.trim();q.choices=document.getElementById("bChoices").value.split("\n").map(x=>x.trim()).filter(Boolean);q.answer=Number(document.getElementById("bAnswer").value);q.explain=document.getElementById("bExplain").value.trim();q.source=document.getElementById("bSource").value;save();bank()}}
 
 function exportData(){let blob=new Blob([JSON.stringify(db,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="qualify-ai-backup.json";a.click();URL.revokeObjectURL(a.href)}
-function importData(){let f=document.getElementById("importFile").files[0];if(!f){alert("JSONファイルを選択してください");return}let r=new FileReader();r.onload=()=>{try{let x=JSON.parse(r.result);if(x.questions)db.questions.push(...x.questions.map(q=>({...q,id:q.id||"imp"+Date.now()+Math.random()})));if(x.qualifications)for(let q of x.qualifications)if(!db.qualifications.some(a=>a.id===q.id))db.qualifications.push(q);if(x.pendingReview)db.pendingReview.push(...x.pendingReview);save();alert("読み込みました");render()}catch(e){alert("JSON形式を確認してください")}};r.readAsText(f)}
+function importData(){let f=document.getElementById("importFile").files[0];if(!f){alert("JSONファイルを選択してください");return}let r=new FileReader();r.onload=()=>{try{let x=JSON.parse(r.result);if(x.questions)db.questions.push(...x.questions.map(q=>({...q,id:q.id||"imp"+Date.now()+Math.random()})));if(x.referenceQuestions)db.referenceQuestions.push(...x.referenceQuestions.map(q=>({...q,id:q.id||"refimp"+Date.now()+Math.random()})));if(x.qualifications)for(let q of x.qualifications)if(!db.qualifications.some(a=>a.id===q.id))db.qualifications.push(q);if(x.pendingReview)db.pendingReview.push(...x.pendingReview);save();alert("読み込みました");render()}catch(e){alert("JSON形式を確認してください")}};r.readAsText(f)}
 document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click",()=>{page=b.dataset.page;render()}));
-if("serviceWorker" in navigator && location.protocol.startsWith("http"))navigator.serviceWorker.register("./sw.js").catch(()=>{});
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloadedForUpdate = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController || reloadedForUpdate) return;
+    reloadedForUpdate = true;
+    location.reload();
+  });
+  navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).then(registration => {
+    registration.update().catch(() => {});
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") registration.update().catch(() => {});
+    });
+  }).catch(() => {});
+}
 render();

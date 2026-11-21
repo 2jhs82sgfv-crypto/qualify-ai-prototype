@@ -1,17 +1,17 @@
-# QUALIFY AI v0.3 更新手順
+# QUALIFY AI v0.4 iPhone導入ガイド
 
-## GitHub Pagesの画面を更新
-1. ZIPを解凍する。
-2. 中身の `index.html`、`app.js`、`manifest.webmanifest`、`sw.js`、アイコン3点、README、INSTALL_GUIDEをGitHubリポジトリのルートへアップロードする。
-3. 既存ファイルと同名のものは置き換える。
-4. `server` フォルダもリポジトリに置いて構いませんが、GitHub PagesはNode.js APIサーバーとして実行しません。
-5. アプリを再読み込みする。古いService Workerが残る場合はSafariでページを再読み込みし、必要ならホーム画面アプリを一度終了して再起動する。
+## GitHub Pages更新
+1. GitHubリポジトリのルートに、`qualify_ai_v03_ai_import.zip` という名前でこのZIPをアップロードします。
+2. `.github/workflows/extract-app.yml` がZIPを展開し、アプリファイルを `main` ブランチのルートへコピーします。
+3. GitHubのActionsで「Extract app ZIP」が成功し、続いて「pages build and deployment」が成功したことを確認します。
+4. 公開アプリを開き、Safariの更新ボタンで再読み込みします。ホーム画面に追加したアプリの場合、古いキャッシュが残ることがあります。
 
-## AI解析を本当に動かすには
-1. `server/` フォルダをNode.js 20以上のHTTPS対応ホストへ別途デプロイする。
-2. ホストの環境変数に `OPENAI_API_KEY` を登録する。キーはブラウザやGitHubへ絶対に置かない。
-3. `FRONTEND_ORIGIN` にGitHub Pagesのオリジン（例 `https://ユーザー名.github.io`）を設定する。
-4. 公開したAPI URLをアプリの「AI資料取込」画面に入力する。
-5. `/health` が `{"ok":true}` を返すことを確認してから資料解析を試す。
+## ChatGPTで参考問題を登録し、予想問題を生成
+1. アプリの「参考問題＋予想問題」タブを開きます。
+2. 資格を選択し、参考問題のPDF・画像等を選択します。
+3. 「ChatGPTに資料を渡す」を押して共有シートからChatGPTを選択します。共有できない場合はChatGPTで資料を添付し、指示文を貼り付けます。
+4. ChatGPTに参考問題と予想問題を含むJSONファイルを作成してもらいます。
+5. アプリに戻り、そのJSONを「ChatGPTの結果を取り込む」から読み込みます。
 
-APIキーの発行とAPI利用にはOpenAI Platformの設定・API課金が必要です。ChatGPTの利用プランとは別です。
+## 注意
+ChatGPTからアプリへ生成結果を自動返送する仕組みはiOS上で提供されないため、JSONファイルを一度選択して取り込む必要があります。問題データは端末のブラウザ内に保存されます。定期的にJSONバックアップを行ってください。
